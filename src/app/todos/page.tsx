@@ -1,9 +1,13 @@
-"use client"; // Import React and necessary hooks
+"use client";
 import React, { useState, useEffect } from "react";
-// Axios for making HTTP requests
 import axios from "axios";
+import {
+  DragDropContext,
+  Droppable,
+  Draggable,
+  DropResult,
+} from "react-beautiful-dnd";
 
-// Define a TypeScript interface for the todo items
 interface Todo {
   id: string;
   desc: string;
@@ -11,43 +15,54 @@ interface Todo {
 }
 
 export default function Todos() {
-  // State for the input text
   const [inputText, setInputText] = useState<string>("");
-  // State for the todos list, typed according to the Todo interface
   const [todos, setTodos] = useState<Todo[]>([]);
 
-  // Effect hook to load todos on component mount
   useEffect(() => {
     axios
       .get("/api/todos")
       .then((resp) => {
         console.log(resp);
-        setTodos(resp.data.todos);
+        // Ensure todos have unique ids and match the Todo type
+        const fetchedTodos: Todo[] = resp.data.todos.map(
+          (todo: Todo, index: number) => ({ ...todo, id: `todo-${index}` })
+        );
+        setTodos(fetchedTodos);
       })
       .catch((error) => console.error("Failed to fetch todos:", error));
-  }, []); // The empty dependency array ensures this effect runs only once on mount
+  }, []);
 
-  // Function to add a new todo
   async function addTodos() {
-    if (!inputText) return; // Prevent adding empty todos
-    const data = {
-      desc: inputText,
-    };
+    if (!inputText) return;
+    const data = { desc: inputText };
 
     try {
       const resp = await axios.post("/api/todos", data);
       console.log(resp);
-      setInputText(""); // Clear input after adding
-      setTodos((prevTodos) => [...prevTodos, resp.data.savedTodo]); // Update the todos state
+      setInputText("");
+      setTodos((prevTodos) => [
+        ...prevTodos,
+        { ...resp.data.savedTodo, id: `todo-${prevTodos.length}` },
+      ]);
     } catch (error) {
       console.error("Failed to add todo:", error);
     }
   }
 
-  // Function to clear the input field
   const clearTodos = () => setInputText("");
 
-  // JSX for the component
+  const onDragEnd = (result: DropResult) => {
+    const { source, destination } = result;
+    if (!destination) {
+      return;
+    }
+    const newTodos = Array.from(todos);
+    const [reorderedItem] = newTodos.splice(source.index, 1);
+    newTodos.splice(destination.index, 0, reorderedItem);
+
+    setTodos(newTodos);
+  };
+
   return (
     <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-r from-pink-300 via-purple-300 to-indigo-400">
       <div className="p-8 bg-white rounded-lg shadow-2xl max-w-lg w-full">
@@ -73,27 +88,50 @@ export default function Todos() {
             Clear
           </button>
         </div>
-        <div className="space-y-4">
-          {todos.map((todo) => (
-            <div
-              key={todo.id}
-              className="flex items-center justify-between bg-gray-100 p-4 rounded"
-            >
-              <div className="flex items-center">
-                <input type="checkbox" className="mr-2" />
-                <span className="text-gray-800">{todo.desc}</span>
-              </div>
-              <div className="flex gap-2">
-                <button className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded text-sm transition duration-200">
-                  Edit
-                </button>
-                <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded text-sm transition duration-200">
-                  Delete
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+        <DragDropContext onDragEnd={onDragEnd}>
+          {todos.length > 0 && (
+            <Droppable droppableId="todos" key={todos.length}>
+              {(provided, snapshot) => (
+                <div
+                  {...provided.droppableProps}
+                  ref={provided.innerRef}
+                  className="space-y-4"
+                >
+                  {todos.map((todo: Todo, index: number) => (
+                    <Draggable
+                      key={todo.id}
+                      draggableId={todo.id}
+                      index={index}
+                    >
+                      {(provided, snapshot) => (
+                        <div
+                          ref={provided.innerRef}
+                          {...provided.draggableProps}
+                          {...provided.dragHandleProps}
+                          className="flex items-center justify-between bg-gray-100 p-4 rounded"
+                        >
+                          <div className="flex items-center">
+                            <input type="checkbox" className="mr-2" />
+                            <span className="text-gray-800">{todo.desc}</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-3 rounded text-sm transition duration-200">
+                              Edit
+                            </button>
+                            <button className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded text-sm transition duration-200">
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </Draggable>
+                  ))}
+                  {provided.placeholder}
+                </div>
+              )}
+            </Droppable>
+          )}
+        </DragDropContext>
       </div>
     </div>
   );
